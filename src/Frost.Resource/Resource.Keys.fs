@@ -1,4 +1,4 @@
-﻿namespace Frost.Resource
+﻿namespace Frost.Resource.Keys
 
 
 [<RequireQualifiedAccess>]
@@ -16,8 +16,13 @@ module internal Actions =
 module internal Config =
     
     let [<Literal>] AllowedMethods = "allowedMethods"
-    let [<Literal>] KnownMethods = "knownMethods"
+    let [<Literal>] AvailableCharsets = "availableCharsets"
+    let [<Literal>] AvailableEncodings = "availableEncodings"
+    let [<Literal>] AvailableLanguages = "availableLanguages"
+    let [<Literal>] AvailableMediaTypes = "availableMediaTypes"
     let [<Literal>] ETag = "eTag"
+    let [<Literal>] KnownMethods = "knownMethods"
+    let [<Literal>] Modified = "modified"
 
 
 [<RequireQualifiedAccess>]

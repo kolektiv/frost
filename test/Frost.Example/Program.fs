@@ -24,12 +24,10 @@ let list = async { return store |> Map.toList }
 [<RequireQualifiedAccess>]
 module App =
 
-    let private opt = Lens.xmap Option.get Some Lens.id
-
-    let Key = prop<string> "key" >>| opt
-    let Value = prop<string> "value" >>| opt
-    let NewValue = prop<string> "newValue" >>| opt
-    let ExistingValue = prop<string> "existingValue" >>| opt
+    let Key = key<string> "key" >>| required
+    let Value = key<string> "value" >>| required
+    let NewValue = key<string> "newValue" >>| required
+    let ExistingValue = key<string> "existingValue" >>| required
 
 // Actions
 
@@ -103,18 +101,19 @@ let keyExists =
 
 // Handlers
 
-let showValue =
-    frost {
-        return! box <!> get App.ExistingValue }
-
-let showKeyValues =
-    frost {
-        return! box <!> Frost.async list }
+let showValue = box <!> get App.ExistingValue
+let showKeyValues = box <!> Frost.async list
 
 // Resources
 
+let negotiation =
+    frostResource {
+        availableMediaTypes [ "application/json" ] }
+
 let key =
     frostResource {
+        including negotiation
+
         allowedMethods [ GET; DELETE; PUT ]
         doDelete removeKey
         doPut updateValue
@@ -124,6 +123,8 @@ let key =
 
 let keys =
     frostResource {
+        including negotiation
+
         allowedMethods [ GET; POST ]
         doPost addKeyValue
         malformed dataMalformed
@@ -140,7 +141,7 @@ let routes =
 
 type KeyValueStore () =
     member x.Configuration () =
-        frostAppToFunc << compileRoutes <| routes
+        toFunc << compileRoutes <| routes
 
 
 [<EntryPoint>]

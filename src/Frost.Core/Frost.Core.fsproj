@@ -49,6 +49,7 @@
   </Choose>
   <Import Project="$(FSharpTargetsPath)" />
   <ItemGroup>
+    <Compile Include="Core.Http.fs" />
     <Compile Include="Core.fs" />
     <None Include="app.config" />
     <None Include="packages.config" />

@@ -1,6 +1,8 @@
 ﻿namespace Frost.Resource
 
+open System
 open Frost.Core
+open Frost.Resource.Keys
 open Frost.Route
 
 
@@ -34,13 +36,28 @@ module ResourceOperations =
     type FrostResourceBuilder with
 
         [<CustomOperation (C.AllowedMethods, MaintainsVariableSpaceUsingBind = true)>]
-        member x.WithAllowedMethods (r, methods: Method list) = x.Set (r, config C.AllowedMethods, Some (box  (Set methods)))
+        member x.AllowedMethods (r, methods: Method list) = x.Set (r, config C.AllowedMethods, Some (box  (Set methods)))
 
-        [<CustomOperation (C.KnownMethods, MaintainsVariableSpaceUsingBind = true)>]
-        member x.WithKnownMethods (r, methods: Method list) = x.Set (r, config C.KnownMethods, Some (box (Set methods)))
+        [<CustomOperation (C.AvailableCharsets, MaintainsVariableSpaceUsingBind = true)>]
+        member x.AvailableCharsets (r, charsets: string list) = x.Set (r, config C.AvailableCharsets, Some (box charsets))
+
+        [<CustomOperation (C.AvailableEncodings, MaintainsVariableSpaceUsingBind = true)>]
+        member x.AvailableEncodings (r, encodings: string list) = x.Set (r, config C.AvailableEncodings, Some (box encodings))
+
+        [<CustomOperation (C.AvailableLanguages, MaintainsVariableSpaceUsingBind = true)>]
+        member x.AvailableLanguages (r, languages: string list) = x.Set (r, config C.AvailableLanguages, Some (box languages))
+
+        [<CustomOperation (C.AvailableMediaTypes, MaintainsVariableSpaceUsingBind = true)>]
+        member x.AvailableMediaTypes (r, mediaTypes: string list) = x.Set (r, config C.AvailableMediaTypes, Some (box mediaTypes))
 
         [<CustomOperation (C.ETag, MaintainsVariableSpaceUsingBind = true)>]
-        member x.WithETag (r, etag: Frost<string>) = x.Set (r, config C.ETag, Some (box etag))
+        member x.ETag (r, etag: Frost<string>) = x.Set (r, config C.ETag, Some (box etag))
+
+        [<CustomOperation (C.KnownMethods, MaintainsVariableSpaceUsingBind = true)>]
+        member x.KnownMethods (r, methods: Method list) = x.Set (r, config C.KnownMethods, Some (box (Set methods)))
+
+        [<CustomOperation (C.Modified, MaintainsVariableSpaceUsingBind = true)>]
+        member x.Modified (r, modified: Frost<DateTime>) = x.Set (r, config C.Modified, Some (box modified))
 
 
     // Handlers

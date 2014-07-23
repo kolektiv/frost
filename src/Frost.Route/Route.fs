@@ -53,7 +53,7 @@ module Lenses =
 
         let private opt = Lens.xmap (Option.get) (Some) Lens.id
         
-        let Values = prop<Map<string, string>> "frost.routingData" >>| opt
+        let Values = key<Map<string, string>> "frost.routingData" >>| opt
         let Value key = Values >>| Lens.forMap key
 
 
