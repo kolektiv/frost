@@ -51,7 +51,7 @@ module Types =
 
     and Action = Frost<unit>
     and Decision = Frost<bool>
-    and Handler = Frost<obj>
+    and Handler = Frost<byte []>
 
     // Resource Execution
 
@@ -116,8 +116,8 @@ module Accept =
 
     let private best configKey header defaults negotiation =
         frost {
-            let! x = (Option.map unbox >> Option.getOrElse defaults) <!> !! (Resource.Definition >>| config configKey)
-            let! y = (Option.map (String.concat ",")) <!> !! (Request.Header header)
+            let! x = (Option.map unbox >> Option.getOrElse defaults) <!> get (Resource.Definition >>| config configKey)
+            let! y = (Option.map (String.concat ",")) <!> get (Request.Header header)
             
             match x, y with
             | x, Some y -> return negotiation x y
@@ -158,15 +158,15 @@ module internal Decisions =
         frost { return false }
 
     let headerExists h =
-        Option.isSome <!> !! (Request.Header h)
+        Option.isSome <!> get (Request.Header h)
 
     let isMethod m =
-        (=) m <!> !! Request.Method
+        (=) m <!> get Request.Method
 
     let methodIn c defaults =
         frost {
-            let! m = !! Request.Method
-            let! s = Option.map unbox <!> !! (Resource.Definition >>| config c)
+            let! m = get Request.Method
+            let! s = Option.map unbox <!> get (Resource.Definition >>| config c)
 
             return Set.contains m (s |> Option.getOrElse (Set defaults)) }
 
@@ -177,10 +177,10 @@ module internal Decisions =
         methodIn C.KnownMethods [ DELETE; HEAD; GET; OPTIONS; PATCH; POST; PUT; TRACE ]
 
     let ifMatchStar =
-        (=) (Some [ "*" ]) <!> !! (Request.Header "If-Match")
+        (=) (Some [ "*" ]) <!> get (Request.Header "If-Match")
 
     let ifNoneMatchStar =
-        (=) (Some [ "*" ]) <!> !! (Request.Header "If-None-Match")
+        (=) (Some [ "*" ]) <!> get (Request.Header "If-None-Match")
 
     let tryParseDate d =
         DateTime.TryParse 
@@ -189,7 +189,7 @@ module internal Decisions =
 
     let validDate header =
         frost {
-            let! header = Option.get <!> !! (Request.Header header)
+            let! header = Option.get <!> get (Request.Header header)
 
             match header with
             | h :: _ -> return fst <| tryParseDate h
@@ -207,10 +207,10 @@ module internal Handlers =
 
     let defaultHandler code phrase =
         frost {
-            do! Some code => Response.StatusCode
-            do! Some phrase => Response.ReasonPhrase
+            do! Response.StatusCode <-- Some code
+            do! Response.ReasonPhrase <-- Some phrase
 
-            return (box "") }
+            return Array.empty }
 
 
 [<AutoOpen>]
@@ -252,7 +252,7 @@ module internal Graph =
           H.ServiceUnavailable, defaultHandler 503 "Service Unavailable" ]
     
     let private internalDecisions =
-        [ D.AcceptCharsetExists, headerExists "Accept-Charset", (D.CharSetAvailable, D.AcceptEncodingExists)
+        [ D.AcceptCharsetExists, headerExists "Accept-Charset", (D.CharsetAvailable, D.AcceptEncodingExists)
           D.AcceptEncodingExists, headerExists "Accept-Encoding", (D.EncodingAvailable, D.Processable)
           D.AcceptExists, headerExists "Accept", (D.MediaTypeAvailable, D.AcceptLanguageExists)
           D.AcceptLanguageExists, headerExists "Accept-Language", (D.LanguageAvailable, D.AcceptCharsetExists)
@@ -281,7 +281,7 @@ module internal Graph =
           D.CanPostToGone, defaultFalse, (A.Post, H.Gone)
           D.CanPostToMissing, defaultTrue, (A.Post, H.NotFound)
           D.CanPutToMissing, defaultTrue, (D.Conflict, H.NotImplemented)
-          D.CharSetAvailable, Option.isSome <!> Accept.Charset, (D.AcceptEncodingExists, H.NotAcceptable)
+          D.CharsetAvailable, Option.isSome <!> Accept.Charset, (D.AcceptEncodingExists, H.NotAcceptable)
           D.Conflict, defaultFalse, (H.Conflict, A.Put)
           D.ContentTypeKnown, defaultTrue, (D.ValidEntityLength, H.UnsupportedMediaType)
           D.ContentTypeValid, defaultTrue, (D.ContentTypeKnown, H.NotImplemented)
@@ -364,14 +364,16 @@ module internal Execution =
 [<AutoOpen>]
 module Functions =         
 
-    let compileResource resource : FrostApp =
+    let compileResource resource =
         let def = defOf resource
         let graph = graphOf def
         
         frost {
-            do! def => Resource.Definition
+            do! Resource.Definition <-- def
+
             let! rep = execute graph
 
-            printfn "Rep: %A" rep
+            do! Response.Header "Content-Length" <-- Some [ string rep.Length ]
+            do! Response.Body <!- fun x -> x.Write (rep, 0, rep.Length); x
 
-            return () } |> compile
+            return true }

@@ -72,6 +72,7 @@ module Lenses =
         open System.IO
 
         let private Headers = key<IDictionary<string, string []>> "owin.RequestHeaders" >>| required
+        let private QueryString = key<string> "owin.RequestQueryString" >>| (QueryString.map ||> xmapReq)
 
         let Body = key<Stream> "owin.RequestBody" >>| required
         let Header key = Headers >>| header key >>| xmapOpt List.ofArray List.toArray
@@ -79,7 +80,7 @@ module Lenses =
         let Path = key<string> "owin.RequestPath" >>| required
         let PathBase = key<string> "owin.RequestPathBase" >>| required
         let Protocol = key<string> "owin.RequestProtocol" >>| (Protocol.map ||> xmapReq)
-        let QueryString = key<string> "owin.RequestQueryString" >>| required
+        let Query k = QueryString >>| Lens.forMap k
         let Scheme = key<string> "owin.RequestScheme" >>| (Scheme.map ||> xmapReq)
 
 
@@ -222,6 +223,13 @@ module Frost =
             let! v = m
             return f v }
 
+    let chain m1 m2 : Frost<bool> =
+        frost {
+            let! next = m1
+
+            match next with
+            | true -> return! m2
+            | _ -> return false }
 
 module Operators =
 
@@ -233,9 +241,11 @@ module Operators =
     let inline (>>=) m f = Frost.composeSeq m f
     let inline (=<<) f m = Frost.composeSeq m f
     let inline (<!>) f m = Frost.map f m
+    let inline (>->) m1 m2 = Frost.chain m1 m2
 
     // Lens Operators
 
-    let inline (!!) l = get l
-    let inline (=>) v l = set l v
-    let inline (=!>) f l = update l f
+    let inline (-->) v l = set l v
+    let inline (<--) l v = set l v
+    let inline (-!>) f l = update l f
+    let inline (<!-) l f = update l f

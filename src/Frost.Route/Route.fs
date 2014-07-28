@@ -24,7 +24,7 @@ module Types =
               Set = fun r x -> { x with Root = r } }
 
     and FrostRoutingNode =
-        { App: FrostApp option
+        { App: Frost<bool> option
           Children: FrostRoutingNode list
           Key: string
           Recognizer: FrostRoutingRecognizer }
@@ -42,7 +42,7 @@ module Types =
         | Capture of string
 
     type FrostRoutingRegistration =
-        | Registration of string list * FrostApp
+        | Registration of string list * Frost<bool>
 
 
 [<AutoOpen>]
@@ -161,15 +161,15 @@ module Functions =
 
     // Compilation
 
-    let compileRoutes (routes: FrostRoutes) : FrostApp =
+    let compileRoutes (routes: FrostRoutes) =
         let trie = snd << routes <| FrostRoutingTrie.empty
 
         frost {
-            let! path = !! Request.Path
+            let! path = get Request.Path
 
             match search path trie with
             | Some (app, data) ->
-                do! data => Routing.Values 
-                do! !! Lens.id >>= fun e -> !!! (app e) >>= fun e -> e => Lens.id
+                do! Routing.Values <-- data
+                return! app
             | _ -> 
-                return () } |> compile
+                return true }

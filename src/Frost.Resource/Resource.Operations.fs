@@ -163,8 +163,8 @@ module ResourceOperations =
         [<CustomOperation (D.Authorized, MaintainsVariableSpaceUsingBind = true)>]
         member x.Authorized (r, f) = x.Set (r, decision D.Authorized, Some f)
 
-        [<CustomOperation (D.CharSetAvailable, MaintainsVariableSpaceUsingBind = true)>]
-        member x.CharSetAvailable (r, f) = x.Set (r, decision D.CharSetAvailable, Some f)
+        [<CustomOperation (D.CharsetAvailable, MaintainsVariableSpaceUsingBind = true)>]
+        member x.CharsetAvailable (r, f) = x.Set (r, decision D.CharsetAvailable, Some f)
 
         [<CustomOperation (D.CanPostToGone, MaintainsVariableSpaceUsingBind = true)>]
         member x.CanPostToGone (r, f) = x.Set (r, decision D.CanPostToGone, Some f)

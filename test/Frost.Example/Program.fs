@@ -72,14 +72,14 @@ let dataMalformed =
         | POST ->
             let! key, value = toPair <!> get Request.Body
 
-            do! key => App.Key
-            do! value => App.Value
+            do! App.Key <-- key
+            do! App.Value <-- value
 
             return false 
         | PUT ->
             let! value = toString <!> get Request.Body
 
-            do! value => App.NewValue
+            do! App.NewValue <-- value
 
             return false
         | _ ->
@@ -92,8 +92,8 @@ let keyExists =
 
         match value with
         | Some value ->
-            do! key => App.Key
-            do! value => App.ExistingValue
+            do! App.Key <-- key
+            do! App.ExistingValue <-- value
 
             return true
         | _ ->
