@@ -11,62 +11,15 @@ open FSharpx.Async
 [<AutoOpen>]
 module Types = 
 
-    // Frost
-
     type FrostEnv = IDictionary<string, obj>
     type FrostApp = FrostEnv -> Async<FrostEnv>
     type FrostAppFunc = Func<FrostEnv, Task>
-
-    // HTTP
-
-    type Method =
-        | DELETE | HEAD | GET | OPTIONS 
-        | PATCH | POST | PUT | TRACE | Custom of string
-
-        static member fromString =
-            function | "DELETE" -> DELETE | "HEAD" -> HEAD 
-                     | "GET" -> GET | "OPTIONS" -> OPTIONS
-                     | "PATCH" -> PATCH | "POST" -> POST 
-                     | "PUT" -> PUT | "TRACE" -> TRACE
-                     | x -> Custom x 
-
-        static member toString =
-            function | DELETE -> "DELETE" | HEAD -> "HEAD" 
-                     | GET -> "GET" | OPTIONS -> "OPTIONS"
-                     | PATCH -> "PATCH" | POST -> "POST" 
-                     | PUT -> "PUT"  | TRACE -> "TRACE"
-                     | Custom x -> x
-
-    type Protocol =
-        | HTTP of float | Custom of string
-
-        static member fromString =
-            function | "HTTP/1.0" -> HTTP 1.0 
-                     | "HTTP/1.1" -> HTTP 1.1 
-                     | x -> Custom x
-
-        static member toString =
-            function | HTTP x -> sprintf "HTTP/%f" x 
-                     | Custom x -> x
-
-    type Scheme =
-        | HTTP | HTTPS | Custom of string
-
-        static member fromString =
-            function | "http" -> HTTP 
-                     | "https" -> HTTPS 
-                     | x -> Custom x
-
-        static member toString =
-            function | HTTP -> "http" 
-                     | HTTPS -> "https" 
-                     | Custom x -> x
 
 
 [<AutoOpen>]
 module Lenses =
 
-    let private key<'T> key : Lens<FrostEnv, 'T option> =
+    let key<'T> key : Lens<FrostEnv, 'T option> =
         { Get = fun env ->
               match env.TryGetValue key with
               | true, value -> Some (value :?> 'T)
@@ -86,13 +39,14 @@ module Lenses =
               | Some header -> headers.[key] <- header; headers
               | _ -> headers.Remove key |> ignore; headers }
 
-    let private opt = Lens.xmap (Option.get) (Some) Lens.id
-    let private xmapMethod = Lens.xmap Method.fromString Method.toString Lens.id
-    let private xmapProtocol = Lens.xmap Protocol.fromString Protocol.toString Lens.id
-    let private xmapScheme = Lens.xmap Scheme.fromString Scheme.toString Lens.id
-    let private xmapList= Lens.xmap (Option.map List.ofArray) (Option.map List.toArray) Lens.id
+    let xmapOpt<'T, 'U> (f: 'T -> 'U) (t: 'U -> 'T) =
+        Lens.xmap (Option.map f) (Option.map t) Lens.id
 
-    let prop<'T> k = key<'T> k
+    let xmapReq<'T, 'U> (f: 'T -> 'U) (t: 'U -> 'T) =
+        Lens.xmap (Option.get >> f) (t >> Some) Lens.id
+
+    let required<'T> = 
+        xmapReq<'T, 'T> id id
 
 
     [<RequireQualifiedAccess>]
@@ -108,7 +62,7 @@ module Lenses =
 
         open System.Threading
 
-        let Cancellation = key<CancellationToken> "owin.CallCancelled" >>| Lens.xmap Option.get Some Lens.id
+        let Cancellation = key<CancellationToken> "owin.CallCancelled" >>| required
         let Version = key<string> "owin.Version"
 
 
@@ -117,16 +71,17 @@ module Lenses =
 
         open System.IO
 
-        let private Headers = key<IDictionary<string, string []>> "owin.RequestHeaders" >>| Lens.xmap Option.get Some Lens.id
+        let private Headers = key<IDictionary<string, string []>> "owin.RequestHeaders" >>| required
+        let private QueryString = key<string> "owin.RequestQueryString" >>| (QueryString.map ||> xmapReq)
 
-        let Body = key<Stream> "owin.RequestBody" >>| Lens.xmap Option.get Some Lens.id
-        let Header key = Headers >>| header key >>| xmapList
-        let Method = key<string> "owin.RequestMethod" >>| opt >>| xmapMethod
-        let Path = key<string> "owin.RequestPath" >>| opt
-        let PathBase = key<string> "owin.RequestPathBase" >>| opt
-        let Protocol = key<string> "owin.RequestProtocol" >>| opt >>| xmapProtocol
-        let QueryString = key<string> "owin.RequestQueryString" >>| opt
-        let Scheme = key<string> "owin.RequestScheme" >>| opt >>| xmapScheme
+        let Body = key<Stream> "owin.RequestBody" >>| required
+        let Header key = Headers >>| header key >>| xmapOpt List.ofArray List.toArray
+        let Method = key<string> "owin.RequestMethod" >>| (Method.map ||> xmapReq)
+        let Path = key<string> "owin.RequestPath" >>| required
+        let PathBase = key<string> "owin.RequestPathBase" >>| required
+        let Protocol = key<string> "owin.RequestProtocol" >>| (Protocol.map ||> xmapReq)
+        let Query k = QueryString >>| Lens.forMap k
+        let Scheme = key<string> "owin.RequestScheme" >>| (Scheme.map ||> xmapReq)
 
 
     [<RequireQualifiedAccess>]
@@ -134,13 +89,13 @@ module Lenses =
 
         open System.IO
 
-        let private Headers = key<IDictionary<string, string []>> "owin.ResponseHeaders" >>| Lens.xmap Option.get Some Lens.id
+        let private Headers = key<IDictionary<string, string []>> "owin.ResponseHeaders" >>| required
 
-        let Body = key<Stream> "owin.ResponseBody" >>| Lens.xmap Option.get Some Lens.id
-        let Header key = Headers >>| header key >>| xmapList
+        let Body = key<Stream> "owin.ResponseBody" >>| required
+        let Header key = Headers >>| header key >>| xmapOpt List.ofArray List.toArray
         let StatusCode = key<int> "owin.ResponseStatusCode"
         let ReasonPhrase = key<string> "owin.ResponseReasonPhrase"
-        let Protocol = key<string> "owin.ResponseProtocol" >>| opt >>| xmapProtocol // TODO - response protocol is really optional...
+        let Protocol = key<string> "owin.ResponseProtocol" >>| (Protocol.map ||> xmapOpt)
 
 
 [<AutoOpen>]
@@ -210,40 +165,50 @@ module Monad =
 [<AutoOpen>]
 module Functions =
 
-    // Monadic Lens Functions
+    // Lens
 
-    let get l = 
-        frost { 
-            return! fun s -> 
-                async { return Lens.get s l, s } }
+    let get l : Frost<_> = 
+        fun s -> async { return Lens.get s l, s }
 
-    let set l v =
-        frost { 
-            do! fun s -> 
-                async { return (), Lens.set v s l } }
+    let set l v : Frost<unit> =
+        fun s -> async { return (), Lens.set v s l }
 
-    let update l f = 
-        frost { 
-            do! fun s -> 
-                async { return (), Lens.update f l s } }
+    let update l f : Frost<unit> =
+        fun s -> async { return (), Lens.update f l s }
+
+    // Monad
+
 
     // Compilation
 
-    let compile (f: Frost<_>) : FrostApp =
+    let compile f : FrostApp = 
         fun e -> async { return! snd <!> f e }
 
     // Utility
 
-    let frostAppToFunc (app: FrostApp) : FrostAppFunc =
+    let toFunc app : FrostAppFunc =
         Func<_,_> (fun e -> Async.StartAsTask (app e) :> Task)
 
 
 module Frost =
 
-    let async f =
+    // TODO: Look at tidying this up? Possibly some of these should be a bit different...
+
+    let async f : Frost<_> =
+        fun s -> async { return! flip tuple2 s <!> f }
+
+    let chain m1 m2 : Frost<_> =
         frost {
-            return! fun s -> 
-                async { return! flip tuple2 s <!> f } }
+            do! m1
+            return! m2 }
+
+    let pipe m1 m2 : Frost<bool> =
+        frost {
+            let! next = m1
+
+            match next with
+            | true -> return! m2
+            | _ -> return false }
 
     let compose m f =
         fun x ->
@@ -261,6 +226,40 @@ module Frost =
             let! v = m
             return f v }
 
+    let seq ms =
+        frost {
+            for m in ms do 
+                do! m }
+
+
+    let memo n f =
+        frost {
+            let! memoized = get <| key n
+
+            match memoized with
+            | Some memoized ->
+                return memoized
+            | _ ->
+                let! created = f
+                do! set (key n) (Some created)
+
+                return created }
+
+    let tuple2 m1 m2 =
+        frost {
+            let! x = m1
+            let! y = m2
+            
+            return x, y }
+
+    let tuple3 m1 m2 m3 =
+        frost {
+            let! x = m1
+            let! y = m2
+            let! z = m3
+            
+            return x, y , z}
+
 
 module Operators =
 
@@ -272,9 +271,14 @@ module Operators =
     let inline (>>=) m f = Frost.composeSeq m f
     let inline (=<<) f m = Frost.composeSeq m f
     let inline (<!>) f m = Frost.map f m
+    let inline (>?>) m1 m2 = Frost.pipe m1 m2
+    let inline (>->) m1 m2 = Frost.chain m1 m2
+    let inline (@>>) n f = Frost.memo f n
+    let inline (<<@) f n = Frost.memo f n
 
     // Lens Operators
 
-    let inline (!!) l = get l
-    let inline (=>) v l = set l v
-    let inline (=!>) f l = update l f
+    let inline (-->) v l = set l v
+    let inline (<--) l v = set l v
+    let inline (-!>) f l = update l f
+    let inline (<!-) l f = update l f

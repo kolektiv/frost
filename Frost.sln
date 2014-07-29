@@ -3,10 +3,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2013
 VisualStudioVersion = 12.0.30501.0
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Frost.Example", "test\Frost.Example\Frost.Example.fsproj", "{05E3802C-BBA7-4A39-97A2-C6A36E4D8749}"
-EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test", "test", "{E5434508-659A-4B2D-A931-9E55E93F0D24}"
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{037CE4C8-44F9-46F9-B50E-D8CC56BD7149}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Frost.Core", "src\Frost.Core\Frost.Core.fsproj", "{2945BF4C-2411-4128-AC66-F9921FBF2E85}"
@@ -15,16 +11,16 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Frost.Route", "src\Frost.Ro
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Frost.Resource", "src\Frost.Resource\Frost.Resource.fsproj", "{4B7C65A3-667D-42DC-BEA7-3065F1CF305F}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Frost.Examples.VersionedStorage", "doc\examples\Frost.Examples.VersionedStorage\Frost.Examples.VersionedStorage.fsproj", "{1C71B016-CEF1-4DD7-9A28-9E6AFB89C6DB}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "examples", "examples", "{E648E8E6-D691-4A2E-B9E2-C1F315BBBB41}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{05E3802C-BBA7-4A39-97A2-C6A36E4D8749}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{05E3802C-BBA7-4A39-97A2-C6A36E4D8749}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{05E3802C-BBA7-4A39-97A2-C6A36E4D8749}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{05E3802C-BBA7-4A39-97A2-C6A36E4D8749}.Release|Any CPU.Build.0 = Release|Any CPU
 		{2945BF4C-2411-4128-AC66-F9921FBF2E85}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{2945BF4C-2411-4128-AC66-F9921FBF2E85}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2945BF4C-2411-4128-AC66-F9921FBF2E85}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -37,14 +33,18 @@ Global
 		{4B7C65A3-667D-42DC-BEA7-3065F1CF305F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4B7C65A3-667D-42DC-BEA7-3065F1CF305F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4B7C65A3-667D-42DC-BEA7-3065F1CF305F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1C71B016-CEF1-4DD7-9A28-9E6AFB89C6DB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1C71B016-CEF1-4DD7-9A28-9E6AFB89C6DB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1C71B016-CEF1-4DD7-9A28-9E6AFB89C6DB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1C71B016-CEF1-4DD7-9A28-9E6AFB89C6DB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
-		{05E3802C-BBA7-4A39-97A2-C6A36E4D8749} = {E5434508-659A-4B2D-A931-9E55E93F0D24}
 		{2945BF4C-2411-4128-AC66-F9921FBF2E85} = {037CE4C8-44F9-46F9-B50E-D8CC56BD7149}
 		{7311B53D-F955-4D3D-B1F8-4FD382DE4BEC} = {037CE4C8-44F9-46F9-B50E-D8CC56BD7149}
 		{4B7C65A3-667D-42DC-BEA7-3065F1CF305F} = {037CE4C8-44F9-46F9-B50E-D8CC56BD7149}
+		{1C71B016-CEF1-4DD7-9A28-9E6AFB89C6DB} = {E648E8E6-D691-4A2E-B9E2-C1F315BBBB41}
 	EndGlobalSection
 EndGlobal

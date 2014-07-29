@@ -1,9 +1,19 @@
 ﻿namespace Frost.Resource
 
+open System
+open System.Globalization
 open FSharpx
+open FSharpx.Http
 open FSharpx.Lens.Operators
 open Frost.Core
 open Frost.Core.Operators
+open Frost.Resource.Keys
+
+
+module A = Actions
+module C = Config
+module D = Decisions
+module H = Handlers
 
 
 [<AutoOpen>]
@@ -41,9 +51,9 @@ module Types =
 
     and Action = Frost<unit>
     and Decision = Frost<bool>
-    and Handler = Frost<obj>
+    and Handler = Frost<byte []>
 
-    // Resource Execution Graph
+    // Resource Execution
 
     type internal FrostResourceGraph =
         Map<string, FrostResourceNode>
@@ -98,105 +108,160 @@ module Lenses =
     [<RequireQualifiedAccess>]
     module Resource =
 
-        let Definition = prop<FrostResourceDef> "frost.resourceDefinition"
+        let Definition = key<FrostResourceDef> "frost.resourceDefinition" >>| required 
+
+
+[<RequireQualifiedAccess>]
+module Accept =
+
+    let private best configKey header defaults negotiation =
+        frost {
+            let! x = (Option.map unbox >> Option.getOrElse defaults) <!> get (Resource.Definition >>| config configKey)
+            let! y = (Option.map (String.concat ",")) <!> get (Request.Header header)
+            
+            match x, y with
+            | x, Some y -> return negotiation x y
+            | h :: _, _ -> return Some (h, 1.)
+            | _ -> return None }
+
+    let Charset = 
+        best C.AvailableCharsets "Accept-Charset" [ "UTF-8" ] Conneg.bestCharset @>> "frost.resource.charset"
+
+    let Encoding = 
+        best C.AvailableEncodings "Accept-Encoding" [ "identity" ] Conneg.bestEncoding @>> "frost.resource.encoding"
+
+    let Language = 
+        best C.AvailableLanguages "Accept-Language" [ "*" ] Conneg.bestLanguage @>> "frost.resource.language"
+
+    let MediaType = 
+        best C.AvailableMediaTypes "Accept" [] Conneg.bestMediaType @>> "frost.resource.mediaType"
 
 
 [<AutoOpen>]
-module Functions =
+module internal Actions =
 
-    module A = Actions
-    module C = Config
-    module D = Decisions
-    module H = Handlers
-
-    // Helpers
-
-    let private getOrElse l k a r =
-        Lens.get r (l k) |> Option.getOrElse a
-
-    // Handlers
-
-    let internal defaultH code phrase =
-        frost {
-            do! Some code => Response.StatusCode
-            do! Some phrase => Response.ReasonPhrase
-
-            return (box "") }
-
-    // Predicates
-
-    let internal trueP = 
-        frost { return true }
-
-    let internal falseP = 
-        frost { return false }
-
-    let internal unitP = 
+    let defaultAction = 
         frost { return () }
 
-    let internal headerExists h =
-        frost { return! Option.isSome <!> !! (Request.Header h) }
 
-    let internal isMethod m =
-        frost { return! (=) m <!> !! Request.Method }
+[<AutoOpen>]
+module internal Decisions =
 
-    // Definition
+    let defaultTrue = 
+        frost { return true }
 
-    let private defFrom (r: FrostResource) =
-        r FrostResourceDef.empty |> snd
+    let defaultFalse = 
+        frost { return false }
 
-    // Nodes
+    let headerExists h =
+        Option.isSome <!> get (Request.Header h)
+
+    let isMethod m =
+        (=) m <!> get Request.Method
+
+    let methodIn c defaults =
+        frost {
+            let! m = get Request.Method
+            let! s = Option.map unbox <!> get (Resource.Definition >>| config c)
+
+            return Set.contains m (s |> Option.getOrElse (Set defaults)) }
+
+    let methodAllowed =
+        methodIn C.AllowedMethods [ GET; HEAD ]
+
+    let methodKnown =
+        methodIn C.KnownMethods [ DELETE; HEAD; GET; OPTIONS; PATCH; POST; PUT; TRACE ]
+
+    let ifMatchStar =
+        (=) (Some [ "*" ]) <!> get (Request.Header "If-Match")
+
+    let ifNoneMatchStar =
+        (=) (Some [ "*" ]) <!> get (Request.Header "If-None-Match")
+
+    let tryParseDate d =
+        DateTime.TryParse 
+            (d, CultureInfo.InvariantCulture.DateTimeFormat, 
+                DateTimeStyles.AdjustToUniversal)
+
+    let validDate header =
+        frost {
+            let! header = Option.get <!> get (Request.Header header)
+
+            match header with
+            | h :: _ -> return fst <| tryParseDate h
+            | _ -> return false }
+
+    let ifModifiedSinceValidDate =
+        validDate "If-Modified-Since"
+
+    let ifUnmodifiedSinceValidDate =
+        validDate "If-Unmodified-Since"
+
+
+[<AutoOpen>]
+module internal Handlers =
+
+    let defaultHandler code phrase =
+        frost {
+            do! Response.StatusCode <-- Some code
+            do! Response.ReasonPhrase <-- Some phrase
+
+            return Array.empty }
+
+
+[<AutoOpen>]
+module internal Graph =
 
     let private actions =
-        [ A.Delete, unitP, D.Deleted
-          A.Patch, unitP, D.RespondWithEntity
-          A.Post, unitP, D.PostRedirect
-          A.Put, unitP, D.Created ]
+        [ A.Delete, defaultAction, D.Deleted
+          A.Patch, defaultAction, D.RespondWithEntity
+          A.Post, defaultAction, D.PostRedirect
+          A.Put, defaultAction, D.Created ]
 
     let private handlers =
-        [ H.OK, defaultH 200 "OK"
-          H.Created, defaultH 201 "Created"
-          H.Options, defaultH 201 "Options"
-          H.Accepted, defaultH 202 "Accepted"
-          H.NoContent, defaultH 204 "No Content"
-          H.MovedPermanently, defaultH 301 "Moved Permanently"
-          H.SeeOther, defaultH 303 "See Other"
-          H.NotModified, defaultH 304 "Not Modified"
-          H.MovedTemporarily, defaultH 307 "Moved Temporarily"
-          H.MultipleRepresentations, defaultH 310 "Multiple Representations"
-          H.Malformed, defaultH 400 "Bad Request"
-          H.Unauthorized, defaultH 401 "Unauthorized"
-          H.Forbidden, defaultH 403 "Forbidden"
-          H.NotFound, defaultH 404 "Not Found"
-          H.MethodNotAllowed, defaultH 405 "Method Not Allowed"
-          H.NotAcceptable, defaultH 406 "Not Acceptable"
-          H.Conflict, defaultH 409 "Conflict"
-          H.Gone, defaultH 410 "Gone"
-          H.PreconditionFailed, defaultH 412 "Precondition Failed"
-          H.RequestEntityTooLarge, defaultH 413 "Request Entity Too Large"
-          H.UriTooLong, defaultH 414 "URI Too Long"
-          H.UnsupportedMediaType, defaultH 415 "Unsupported Media Type"
-          H.UnprocessableEntity, defaultH 422 "Unprocessable Entity"
-          H.Exception, defaultH 500 "Internal Server Error"
-          H.NotImplemented, defaultH 501 "Not Implemented"
-          H.UnknownMethod, defaultH 501 "Unknown Method"
-          H.ServiceUnavailable, defaultH 503 "Service Unavailable" ]
+        [ H.OK, defaultHandler 200 "OK"
+          H.Created, defaultHandler 201 "Created"
+          H.Options, defaultHandler 201 "Options"
+          H.Accepted, defaultHandler 202 "Accepted"
+          H.NoContent, defaultHandler 204 "No Content"
+          H.MovedPermanently, defaultHandler 301 "Moved Permanently"
+          H.SeeOther, defaultHandler 303 "See Other"
+          H.NotModified, defaultHandler 304 "Not Modified"
+          H.MovedTemporarily, defaultHandler 307 "Moved Temporarily"
+          H.MultipleRepresentations, defaultHandler 310 "Multiple Representations"
+          H.Malformed, defaultHandler 400 "Bad Request"
+          H.Unauthorized, defaultHandler 401 "Unauthorized"
+          H.Forbidden, defaultHandler 403 "Forbidden"
+          H.NotFound, defaultHandler 404 "Not Found"
+          H.MethodNotAllowed, defaultHandler 405 "Method Not Allowed"
+          H.NotAcceptable, defaultHandler 406 "Not Acceptable"
+          H.Conflict, defaultHandler 409 "Conflict"
+          H.Gone, defaultHandler 410 "Gone"
+          H.PreconditionFailed, defaultHandler 412 "Precondition Failed"
+          H.RequestEntityTooLarge, defaultHandler 413 "Request Entity Too Large"
+          H.UriTooLong, defaultHandler 414 "URI Too Long"
+          H.UnsupportedMediaType, defaultHandler 415 "Unsupported Media Type"
+          H.UnprocessableEntity, defaultHandler 422 "Unprocessable Entity"
+          H.Exception, defaultHandler 500 "Internal Server Error"
+          H.NotImplemented, defaultHandler 501 "Not Implemented"
+          H.UnknownMethod, defaultHandler 501 "Unknown Method"
+          H.ServiceUnavailable, defaultHandler 503 "Service Unavailable" ]
     
     let private internalDecisions =
-        [ D.AcceptCharsetExists, headerExists "Accept-Charset", (D.CharSetAvailable, D.AcceptEncodingExists)
+        [ D.AcceptCharsetExists, headerExists "Accept-Charset", (D.CharsetAvailable, D.AcceptEncodingExists)
           D.AcceptEncodingExists, headerExists "Accept-Encoding", (D.EncodingAvailable, D.Processable)
           D.AcceptExists, headerExists "Accept", (D.MediaTypeAvailable, D.AcceptLanguageExists)
           D.AcceptLanguageExists, headerExists "Accept-Language", (D.LanguageAvailable, D.AcceptCharsetExists)
           D.IfMatchExists, headerExists "If-Match", (D.IfMatchStar, D.IfUnmodifiedSinceExists)
-          D.IfMatchStar, trueP, (D.IfUnmodifiedSinceExists, D.ETagMatchesIf) // replace
+          D.IfMatchStar, ifMatchStar, (D.IfUnmodifiedSinceExists, D.ETagMatchesIf)
           D.IfMatchStarExistsForMissing, headerExists "If-Match", (H.PreconditionFailed, D.MethodPut)
           D.IfModifiedSinceExists, headerExists "If-Modified-Since", (D.IfModifiedSinceValidDate, D.MethodDelete)
-          D.IfModifiedSinceValidDate, trueP, (D.ModifiedSince, D.MethodDelete) // replace
-          D.IfNoneMatch, trueP, (H.NotModified, H.PreconditionFailed) // replace
+          D.IfModifiedSinceValidDate, ifModifiedSinceValidDate, (D.ModifiedSince, D.MethodDelete)
+          D.IfNoneMatch, defaultTrue, (H.NotModified, H.PreconditionFailed) // replace
           D.IfNoneMatchExists, headerExists "If-None-Match", (D.IfNoneMatchStar, D.IfModifiedSinceExists)
-          D.IfNoneMatchStar, trueP, (D.IfNoneMatch, D.ETagMatchesIfNone) // replace
+          D.IfNoneMatchStar, ifNoneMatchStar, (D.IfNoneMatch, D.ETagMatchesIfNone)
           D.IfUnmodifiedSinceExists, headerExists "If-Unmodified-Since", (D.IfUnmodifiedSinceValidDate, D.IfNoneMatchExists)
-          D.IfUnmodifiedSinceValidDate, trueP, (D.UnmodifiedSince, D.IfNoneMatchExists) // replace
+          D.IfUnmodifiedSinceValidDate, ifUnmodifiedSinceValidDate, (D.UnmodifiedSince, D.IfNoneMatchExists)
           D.MethodDelete, isMethod DELETE, (A.Delete, D.MethodPatch)
           D.MethodOptions, isMethod OPTIONS, (H.Options, D.AcceptExists)
           D.MethodPatch, isMethod PATCH, (A.Patch, D.PostToExisting)
@@ -207,66 +272,73 @@ module Functions =
           D.PutToExisting, isMethod PUT, (D.Conflict, D.MultipleRepresentations) ]
 
     let private publicDecisions =
-        [ D.Allowed, trueP, (D.ContentTypeValid, H.Forbidden)
-          D.Authorized, trueP, (D.Allowed, H.Unauthorized)
-          D.CanPostToGone, falseP, (A.Post, H.Gone)
-          D.CanPostToMissing, trueP, (A.Post, H.NotFound)
-          D.CanPutToMissing, trueP, (D.Conflict, H.NotImplemented)
-          D.CharSetAvailable, trueP, (D.AcceptEncodingExists, H.NotAcceptable) // replace
-          D.Conflict, falseP, (H.Conflict, A.Put)
-          D.ContentTypeKnown, trueP, (D.ValidEntityLength, H.UnsupportedMediaType)
-          D.ContentTypeValid, trueP, (D.ContentTypeKnown, H.NotImplemented)
-          D.Created, trueP, (H.Created, D.RespondWithEntity)
-          D.Deleted, trueP, (D.RespondWithEntity, H.Accepted)
-          D.EncodingAvailable, trueP, (D.Processable, H.NotAcceptable) // replace
-          D.ETagMatchesIf, trueP, (D.IfUnmodifiedSinceExists, H.PreconditionFailed) // replace
-          D.ETagMatchesIfNone, trueP, (D.IfNoneMatch, D.IfModifiedSinceExists) // replace
-          D.Existed, falseP, (D.MovedPermanently, D.PostToMissing)
-          D.Exists, trueP, (D.IfMatchExists, D.IfMatchStarExistsForMissing)
-          D.MethodKnown, trueP, (D.UriTooLong, H.UnknownMethod) // replace
-          D.LanguageAvailable, trueP, (D.AcceptCharsetExists, H.NotAcceptable) // replace
-          D.Malformed, falseP, (H.Malformed, D.Authorized)
-          D.MediaTypeAvailable, trueP, (D.AcceptLanguageExists, H.NotAcceptable) // replace
-          D.MethodAllowed, trueP, (D.Malformed, H.MethodNotAllowed) // replace
-          D.ModifiedSince, trueP, (D.MethodDelete, H.NotModified) // replace
-          D.MovedPermanently, falseP, (H.MovedPermanently, D.MovedTemporarily)
-          D.MovedTemporarily, falseP, (H.MovedTemporarily, D.PostToGone)
-          D.MultipleRepresentations, falseP, (H.MultipleRepresentations, H.OK)
-          D.PostRedirect, falseP, (H.SeeOther, D.Created)
-          D.Processable, trueP, (D.Exists, H.UnprocessableEntity)
-          D.PutToDifferentUri, falseP, (H.MovedPermanently, D.CanPutToMissing)
-          D.RespondWithEntity, trueP, (D.MultipleRepresentations, H.NoContent)
-          D.ServiceAvailable, trueP, (D.MethodKnown, H.ServiceUnavailable)
-          D.UnmodifiedSince, trueP, (H.PreconditionFailed, D.IfNoneMatchExists) // replace
-          D.UriTooLong, falseP, (H.UriTooLong, D.MethodAllowed) 
-          D.ValidEntityLength, trueP, (D.MethodOptions, H.RequestEntityTooLarge) ]
+        [ D.Allowed, defaultTrue, (D.ContentTypeValid, H.Forbidden)
+          D.Authorized, defaultTrue, (D.Allowed, H.Unauthorized)
+          D.CanPostToGone, defaultFalse, (A.Post, H.Gone)
+          D.CanPostToMissing, defaultTrue, (A.Post, H.NotFound)
+          D.CanPutToMissing, defaultTrue, (D.Conflict, H.NotImplemented)
+          D.CharsetAvailable, Option.isSome <!> Accept.Charset, (D.AcceptEncodingExists, H.NotAcceptable)
+          D.Conflict, defaultFalse, (H.Conflict, A.Put)
+          D.ContentTypeKnown, defaultTrue, (D.ValidEntityLength, H.UnsupportedMediaType)
+          D.ContentTypeValid, defaultTrue, (D.ContentTypeKnown, H.NotImplemented)
+          D.Created, defaultTrue, (H.Created, D.RespondWithEntity)
+          D.Deleted, defaultTrue, (D.RespondWithEntity, H.Accepted)
+          D.EncodingAvailable, Option.isSome <!> Accept.Encoding, (D.Processable, H.NotAcceptable)
+          D.ETagMatchesIf, defaultTrue, (D.IfUnmodifiedSinceExists, H.PreconditionFailed) // replace
+          D.ETagMatchesIfNone, defaultTrue, (D.IfNoneMatch, D.IfModifiedSinceExists) // replace
+          D.Existed, defaultFalse, (D.MovedPermanently, D.PostToMissing)
+          D.Exists, defaultTrue, (D.IfMatchExists, D.IfMatchStarExistsForMissing)
+          D.MethodKnown, methodKnown, (D.UriTooLong, H.UnknownMethod)
+          D.LanguageAvailable, Option.isSome <!> Accept.Language, (D.AcceptCharsetExists, H.NotAcceptable)
+          D.Malformed, defaultFalse, (H.Malformed, D.Authorized)
+          D.MediaTypeAvailable, Option.isSome <!> Accept.MediaType, (D.AcceptLanguageExists, H.NotAcceptable)
+          D.MethodAllowed, methodAllowed, (D.Malformed, H.MethodNotAllowed)
+          D.ModifiedSince, defaultTrue, (D.MethodDelete, H.NotModified) // replace
+          D.MovedPermanently, defaultFalse, (H.MovedPermanently, D.MovedTemporarily)
+          D.MovedTemporarily, defaultFalse, (H.MovedTemporarily, D.PostToGone)
+          D.MultipleRepresentations, defaultFalse, (H.MultipleRepresentations, H.OK)
+          D.PostRedirect, defaultFalse, (H.SeeOther, D.Created)
+          D.Processable, defaultTrue, (D.Exists, H.UnprocessableEntity)
+          D.PutToDifferentUri, defaultFalse, (H.MovedPermanently, D.CanPutToMissing)
+          D.RespondWithEntity, defaultTrue, (D.MultipleRepresentations, H.NoContent)
+          D.ServiceAvailable, defaultTrue, (D.MethodKnown, H.ServiceUnavailable)
+          D.UnmodifiedSince, defaultTrue, (H.PreconditionFailed, D.IfNoneMatchExists) // replace
+          D.UriTooLong, defaultFalse, (H.UriTooLong, D.MethodAllowed) 
+          D.ValidEntityLength, defaultTrue, (D.MethodOptions, H.RequestEntityTooLarge) ]
 
-    // Graph
+    let private getOrElse l k a r =
+        Lens.get r (l k) |> Option.getOrElse a
 
-    let private actionNodesFrom x r =
+    let private actionNodesOf x r =
         x |> List.map (fun (n, f, next) -> n, Action (getOrElse action n f r, next))
 
-    let private handlerNodesFrom x r =
+    let private handlerNodesOf x r =
         x |> List.map (fun (n, h) -> n, Handler (getOrElse handler n h r))
 
-    let private internalDecisionNodesFrom x r =
+    let private internalDecisionNodesOf x r =
         x |> List.map (fun (n, f, choices) -> n, Decision (f, choices))
 
-    let private publicDecisionNodesFrom x r =
+    let private publicDecisionNodesOf x r =
         x |> List.map (fun (n, f, choices) -> n, Decision (getOrElse decision n f r, choices))
 
-    let private graphFrom r =
-        [ actionNodesFrom actions
-          handlerNodesFrom handlers
-          internalDecisionNodesFrom internalDecisions
-          publicDecisionNodesFrom publicDecisions ]
-        |> Seq.map (fun x -> x r)
+
+    let defOf (resource: FrostResource) =
+        resource FrostResourceDef.empty |> snd
+
+    let graphOf resource =
+        [ actionNodesOf actions
+          handlerNodesOf handlers
+          internalDecisionNodesOf internalDecisions
+          publicDecisionNodesOf publicDecisions ]
+        |> Seq.map (fun f -> f resource)
         |> Seq.concat
         |> Map.ofSeq
 
-    // Execution
 
-    let rec private execute graph =
+[<AutoOpen>]
+module internal Execution =
+
+    let execute graph =
         let rec execute node =
             frost {
                 match Map.find node graph with
@@ -283,52 +355,21 @@ module Functions =
                     return! f }
 
         execute D.ServiceAvailable
+        
+        
+[<AutoOpen>]
+module Functions =         
 
-    // Temporary Visualisation 
-
-    let visualiseResource resource =
-        let def = defFrom resource
-        let graph = graphFrom def
-
-        let config =
-            [ "fontname=Helvetica" ]
-            |> String.concat "\n"
-
-        let nodes =
-            graph
-            |> Map.toList
-            |> List.map (fun (name, node) ->
-                    match node with
-                    | Action _ -> sprintf "%s [shape=circle;fontname=Helvetica]" name
-                    | Decision _ -> sprintf "%s [shape=diamond;fontname=Helvetica]" name
-                    | Handler _ -> sprintf "%s [shape=box;fontname=Helvetica]" name)
-            |> String.concat "\n"
-            
-        let edges =
-            graph 
-            |> Map.toList
-            |> List.map (fun (name, node) -> 
-                match node with
-                | Action (_, next) -> Some [ sprintf "%s -> %s [color=blue]" name next ]
-                | Decision (_, choices) -> Some [ sprintf "%s -> %s [color=green]" name (fst choices)
-                                                  sprintf "%s -> %s [color=red]" name (snd choices) ]
-                | _ -> None)
-            |> List.choose id
-            |> List.concat
-            |> String.concat "\n"
-            
-        sprintf "strict digraph Frost {\n%s\n%s\n%s\n}" config nodes edges               
-
-    // Compilation
-
-    let compileResource resource : FrostApp =
-        let def = defFrom resource
-        let graph = graphFrom def
+    let compileResource resource =
+        let def = defOf resource
+        let graph = graphOf def
         
         frost {
-            do! Some def => Resource.Definition
+            do! Resource.Definition <-- def
+
             let! rep = execute graph
 
-            printfn "Rep: %A" rep
+            do! Response.Header "Content-Length" <-- Some [ string rep.Length ]
+            do! Response.Body <!- fun x -> x.Write (rep, 0, rep.Length); x
 
-            return () } |> compile
+            return true }
