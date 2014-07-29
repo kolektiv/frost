@@ -2,17 +2,18 @@
 
 open System
 open Microsoft.Owin.Hosting
-open Http
 
 // App
 
 type VersionedStorage () =
-    member x.Configuration () = app
+    member x.Configuration () = Http.main
 
 // Main
 
 [<EntryPoint>]
 let main _ = 
     WebApp.Start<VersionedStorage> "http://localhost:8000"
-    |> fun x -> Console.ReadLine () |> ignore; x
-    |> fun x -> x.Dispose (); 0
+    |> fun x -> Console.ReadLine (), x
+    |> fun (_, x) -> x.Dispose ()
+
+    0

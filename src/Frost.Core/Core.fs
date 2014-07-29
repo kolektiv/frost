@@ -174,22 +174,7 @@ module Functions =
         fun s -> async { return (), Lens.set v s l }
 
     let update l f : Frost<unit> =
-        fun s -> async { return (), Lens.update f l s }
-
-    // Caching
-
-    let cache n f : Frost<_> =
-        frost {
-            let! cached = get <| key n
-
-            match cached with
-            | Some cached ->
-                return cached
-            | _ ->
-                let! created = f
-                do! set (key n) (Some created)
-
-                return created }
+        fun s -> async { return (), Lens.update f l s }   
 
     // Compilation
 
@@ -207,6 +192,14 @@ module Frost =
     let async f : Frost<_> =
         fun s -> async { return! flip tuple2 s <!> f }
 
+    let chain m1 m2 : Frost<bool> =
+        frost {
+            let! next = m1
+
+            match next with
+            | true -> return! m2
+            | _ -> return false }
+
     let compose m f =
         fun x ->
             frost {
@@ -223,13 +216,34 @@ module Frost =
             let! v = m
             return f v }
 
-    let chain m1 m2 : Frost<bool> =
+    let memo n f =
         frost {
-            let! next = m1
+            let! memoized = get <| key n
 
-            match next with
-            | true -> return! m2
-            | _ -> return false }
+            match memoized with
+            | Some memoized ->
+                return memoized
+            | _ ->
+                let! created = f
+                do! set (key n) (Some created)
+
+                return created }
+
+    let tuple2 m1 m2 =
+        frost {
+            let! x = m1
+            let! y = m2
+            
+            return x, y }
+
+    let tuple3 m1 m2 m3 =
+        frost {
+            let! x = m1
+            let! y = m2
+            let! z = m3
+            
+            return x, y , z}
+
 
 module Operators =
 
@@ -242,6 +256,8 @@ module Operators =
     let inline (=<<) f m = Frost.composeSeq m f
     let inline (<!>) f m = Frost.map f m
     let inline (>->) m1 m2 = Frost.chain m1 m2
+    let inline (@>>) n f = Frost.memo f n
+    let inline (<<@) f n = Frost.memo f n
 
     // Lens Operators
 

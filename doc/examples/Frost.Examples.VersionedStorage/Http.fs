@@ -3,50 +3,28 @@
 open Frost.Core
 open Frost.Core.Operators
 open Frost.Resource
-open FSharpx
 open Core
 
-// Helpers
+// Request
 
-let meth = get Request.Method
-let path = get Request.Path
-let body = get Request.Body
-let commit = get (Request.Query "commit")
+let meth = get Request.Method @>> "method"
+let path = get Request.Path @>> "path"
+let body = get Request.Body @>> "body"
+let commit = get (Request.Query "commit") @>> "commit"
+
+// Files
+
+let file = (<||) retrieve <!> Frost.tuple2 path commit @>> "file"
 
 // Actions
 
-let fileCreate =
-    frost {
-        let! path = path
-        let! body = body
-
-        do create path body }
-
-let fileDelete =
-    frost {
-        let! path = path
-
-        do delete path }
+let fileCreate = (<||) create <!> Frost.tuple2 path body
+let fileDelete = delete <!> path
 
 // Decisions
 
-let fileExists = 
-    frost {
-        let! path = path
-        let! commit = commit
-
-        match retrieve path commit with
-        | Some data ->
-            do! key "app.data" <-- Some data
-            return true
-        | _ ->
-            return false }
-
-// Handlers
-
-let fileShow =
-    frost {
-        return! Option.get <!> get (key "data") }
+let fileExists = Option.isSome <!> file
+let fileShow = Option.get <!> file
 
 // Resources
 
@@ -54,11 +32,16 @@ let files =
     frostResource {
         allowedMethods [ DELETE; GET; POST ]
         exists fileExists
-
         doPost fileCreate
         doDelete fileDelete
-
         handleOk fileShow }
+
+// Powered By
+
+let poweredBy =
+    frost {
+        do! Response.Header "X-PoweredBy" <-- Some [ "Frost" ]
+        return true }
 
 // Redirect
 
@@ -70,17 +53,17 @@ let redirect =
 
         match meth, commit with
         | GET, None ->
-            let sha = sha ()
-
             do! Response.StatusCode <-- Some 302
             do! Response.ReasonPhrase <-- Some "Moved Temporarily"
-            do! Response.Header "Location" <-- Some [ sprintf "%s?commit=%s" path sha ]
-
+            do! Response.Header "Location" <-- Some [ sprintf "%s?commit=%s" path (sha ()) ]
             return false
         | _ ->
             return true }
 
-// App
+// Main
 
-let app =
-    redirect >-> compileResource files |> toFunc
+let main =
+    poweredBy
+    >-> redirect 
+    >-> compileResource files 
+    |> toFunc

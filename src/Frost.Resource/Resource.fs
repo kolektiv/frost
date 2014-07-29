@@ -125,20 +125,16 @@ module Accept =
             | _ -> return None }
 
     let Charset = 
-        best C.AvailableCharsets "Accept-Charset" [ "UTF-8" ] Conneg.bestCharset 
-        |> cache "frost.resource.charset"
+        best C.AvailableCharsets "Accept-Charset" [ "UTF-8" ] Conneg.bestCharset @>> "frost.resource.charset"
 
     let Encoding = 
-        best C.AvailableEncodings "Accept-Encoding" [ "identity" ] Conneg.bestEncoding 
-        |> cache "frost.resource.encoding"
+        best C.AvailableEncodings "Accept-Encoding" [ "identity" ] Conneg.bestEncoding @>> "frost.resource.encoding"
 
     let Language = 
-        best C.AvailableLanguages "Accept-Language" [ "*" ] Conneg.bestLanguage 
-        |> cache "frost.resource.language"
+        best C.AvailableLanguages "Accept-Language" [ "*" ] Conneg.bestLanguage @>> "frost.resource.language"
 
     let MediaType = 
-        best C.AvailableMediaTypes "Accept" [] Conneg.bestMediaType 
-        |> cache "frost.resource.mediaType"
+        best C.AvailableMediaTypes "Accept" [] Conneg.bestMediaType @>> "frost.resource.mediaType"
 
 
 [<AutoOpen>]
