@@ -174,7 +174,10 @@ module Functions =
         fun s -> async { return (), Lens.set v s l }
 
     let update l f : Frost<unit> =
-        fun s -> async { return (), Lens.update f l s }   
+        fun s -> async { return (), Lens.update f l s }
+
+    // Monad
+
 
     // Compilation
 
@@ -189,10 +192,17 @@ module Functions =
 
 module Frost =
 
+    // TODO: Look at tidying this up? Possibly some of these should be a bit different...
+
     let async f : Frost<_> =
         fun s -> async { return! flip tuple2 s <!> f }
 
-    let chain m1 m2 : Frost<bool> =
+    let chain m1 m2 : Frost<_> =
+        frost {
+            do! m1
+            return! m2 }
+
+    let pipe m1 m2 : Frost<bool> =
         frost {
             let! next = m1
 
@@ -215,6 +225,12 @@ module Frost =
         frost {
             let! v = m
             return f v }
+
+    let seq ms =
+        frost {
+            for m in ms do 
+                do! m }
+
 
     let memo n f =
         frost {
@@ -255,6 +271,7 @@ module Operators =
     let inline (>>=) m f = Frost.composeSeq m f
     let inline (=<<) f m = Frost.composeSeq m f
     let inline (<!>) f m = Frost.map f m
+    let inline (>?>) m1 m2 = Frost.pipe m1 m2
     let inline (>->) m1 m2 = Frost.chain m1 m2
     let inline (@>>) n f = Frost.memo f n
     let inline (<<@) f n = Frost.memo f n

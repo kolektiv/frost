@@ -4,7 +4,6 @@ open System
 open System.IO
 open System.Text
 open FSharpx
-open FSharpx.Option
 open LibGit2Sharp
 
 // Repository
@@ -19,7 +18,7 @@ let private head () =
     | true -> None
     | _ -> Some repo.Head.Tip
 
-let commit sha =
+let private commit sha =
     match sha with
     | None -> head ()
     | Some sha -> repo.Commits |> Seq.tryFind (fun x -> x.Sha = sha)
@@ -44,14 +43,7 @@ let sha () =
     |> Option.map (fun x -> x.Sha)
     |> Option.getOrElse "None"
 
-// Exists
-
-let exists path sha =
-    commit sha
-    |> Option.map (fun x -> x.Tree.[sanitize path] <> null)
-    |> Option.getOrElse false
-
-// Creation
+// Create
 
 let private addToTree path (data: Stream) =
     treeDefinition ()
@@ -65,7 +57,7 @@ let create path data =
 
     repo.Reset (ResetMode.Soft, commit)
 
-// Deletion
+// Delete
 
 let private removeFromTree path =
     treeDefinition ()
@@ -79,13 +71,14 @@ let delete path =
 
     repo.Reset (ResetMode.Soft, commit)
 
-// Retrieval 
+// Read 
 
-let retrieve path sha =
+let read path sha =
     commit sha
-    |> Option.map (fun x -> x.Tree.[sanitize path].Target)
+    |> Option.bind (fun x -> 
+        x.Tree.[sanitize path] |> function | null -> None | x -> Some x)
     |> Option.bind (fun x ->
-        match x with
+        match x.Target with
         | :? Blob as x -> Some (x.GetContentStream ())
         | _ -> None)
     |> Option.map (fun x ->

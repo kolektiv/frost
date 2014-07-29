@@ -14,7 +14,7 @@ let commit = get (Request.Query "commit") @>> "commit"
 
 // Files
 
-let file = (<||) retrieve <!> Frost.tuple2 path commit @>> "file"
+let file = (<||) read <!> Frost.tuple2 path commit @>> "file"
 
 // Actions
 
@@ -34,36 +34,37 @@ let files =
         exists fileExists
         doPost fileCreate
         doDelete fileDelete
-        handleOk fileShow }
+        handleOk fileShow } |> compileResource
 
-// Powered By
+// Pipes
 
-let poweredBy =
-    frost {
-        do! Response.Header "X-PoweredBy" <-- Some [ "Frost" ]
-        return true }
+let poweredBy = Response.Header "X-PoweredBy" <-- Some [ "Frost" ]
+let version = Response.Header "X-Version" <-- Some [ "0.1" ]
 
-// Redirect
+// Filters
 
-let redirect =
+let redirectCommit path =
+    Frost.seq [ Response.StatusCode <-- Some 302
+                Response.ReasonPhrase <-- Some "Moved Temporarily"
+                Response.Header "Location" <-- Some [ sprintf "%s?commit=%s" path (sha ()) ] ]
+
+let requireCommit =
     frost {
         let! meth = meth
-        let! path = path
         let! commit = commit
 
         match meth, commit with
         | GET, None ->
-            do! Response.StatusCode <-- Some 302
-            do! Response.ReasonPhrase <-- Some "Moved Temporarily"
-            do! Response.Header "Location" <-- Some [ sprintf "%s?commit=%s" path (sha ()) ]
+            do! path >>= redirectCommit
             return false
-        | _ ->
+        | _ -> 
             return true }
 
 // Main
 
 let main =
     poweredBy
-    >-> redirect 
-    >-> compileResource files 
+    >-> version
+    >-> requireCommit 
+    >?> files 
     |> toFunc

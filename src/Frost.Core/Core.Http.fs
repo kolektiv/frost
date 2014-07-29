@@ -70,10 +70,14 @@ module QueryString =
         Map<string, string>
     
     let internal fromString (s: string) =
-        s.Split [| '&' |]
-        |> Array.map (fun x -> x.Split [| '=' |])
-        |> Array.map (fun x -> x.[0], x.[1])
-        |> Map.ofArray
+        match s with
+        | "" -> 
+            Map.empty
+        | s ->
+            s.Split [| '&' |]
+            |> Array.map (fun x -> x.Split [| '=' |])
+            |> Array.map (fun x -> x.[0], x.[1])
+            |> Map.ofArray
 
     let internal toString (q: QueryString) =
         Map.toArray q
